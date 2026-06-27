@@ -1,2 +1,0 @@
-# Legacy Python API — not used on Vercel (all routes live in app/api + lib/server)
-backend/

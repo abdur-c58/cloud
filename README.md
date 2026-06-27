@@ -28,45 +28,29 @@ Next.js API routes (lib/server)  ──►  Cloudflare R2
 
 - **UI** — `app/`, `components/`, `lib/api.ts`
 - **Server** — `lib/server/` + `app/api/**` (TypeScript, runs on Vercel Node.js)
-- **Legacy** — `backend/` Python FastAPI (optional for local dev; no longer required)
 
 ## Local setup
 
 ```powershell
 npm install
-cp .env.example .env.local   # fill in secrets
+cp .env.example .env.local   # fill in secrets (single env file)
 npm run dev
 ```
 
 Open <http://localhost:3000>. Sign in: master password → Google.
 
-All secrets go in **`.env.local`** (see `.env.example`). No separate Python server needed.
-
-### Optional: Python backend (legacy)
-
-```powershell
-./dev.ps1   # runs Python + Next.js together
-```
-
-Set `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000` to use the old FastAPI backend instead.
+All secrets live in **`.env.local`** only. See **`.env.example`** for every variable.
 
 ## Deploy to Vercel
 
-This project is a **single Next.js app**. You do **not** need `vercel.json`, `experimentalServices`, or a separate backend deploy.
+This project is a **single Next.js app**. No `vercel.json` or separate backend required.
 
 1. Push to GitHub and import the repo in [Vercel](https://vercel.com).
-2. **Project settings**
-   - **Root Directory:** leave empty (repository root)
-   - **Framework Preset:** Next.js
-   - **Build Command:** `npm run build` (default)
-   - **Do not** set Root Directory to `backend`
-3. Add environment variables from `.env.example` in the Vercel dashboard (Production + Preview).
-4. Leave **`NEXT_PUBLIC_API_BASE` unset** — the UI calls same-origin `/api/*` on Vercel.
-5. Add your Vercel URL to **Google OAuth** redirect URIs:
+2. **Project settings:** Root Directory empty, Framework Preset **Next.js**.
+3. Copy every variable from `.env.example` into Vercel → Environment Variables.
+4. Add your Vercel URL to **Google OAuth** redirect URIs:
    `https://your-app.vercel.app/api/auth/callback/google`
-6. Configure **R2 CORS** in Cloudflare to allow your Vercel domain (or use direct uploads + server fallback).
-
-If deploy fails, check the Vercel build log. Common fixes: set `AUTH_SECRET`, `DATABASE_URL`, and all `R2_*` vars; ensure Node.js **20+** in project settings.
+5. Configure **R2 CORS** in Cloudflare to allow your Vercel domain.
 
 ## First run
 

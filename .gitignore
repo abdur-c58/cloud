@@ -24,15 +24,11 @@
 .DS_Store
 *.pem
 
-# python backend
-backend/.venv/
-backend/__pycache__/
-backend/app/__pycache__/
-backend/app/routers/__pycache__/
 *.db
 *.db-wal
 *.db-shm
-__pycache__/
+.cache/
+backend/
 
 # debug
 npm-debug.log*
@@ -40,8 +36,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (keep .env.example in git)
 .env*
+!.env.example
 
 # vercel
 .vercel
