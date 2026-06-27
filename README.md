@@ -52,11 +52,21 @@ Set `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000` to use the old FastAPI backend 
 
 ## Deploy to Vercel
 
-1. Push to GitHub and import in [Vercel](https://vercel.com).
-2. Add environment variables from `.env.example` in the Vercel dashboard.
-3. Add your Vercel URL to **Google OAuth** redirect URIs:
+This project is a **single Next.js app**. You do **not** need `vercel.json`, `experimentalServices`, or a separate backend deploy.
+
+1. Push to GitHub and import the repo in [Vercel](https://vercel.com).
+2. **Project settings**
+   - **Root Directory:** leave empty (repository root)
+   - **Framework Preset:** Next.js
+   - **Build Command:** `npm run build` (default)
+   - **Do not** set Root Directory to `backend`
+3. Add environment variables from `.env.example` in the Vercel dashboard (Production + Preview).
+4. Leave **`NEXT_PUBLIC_API_BASE` unset** — the UI calls same-origin `/api/*` on Vercel.
+5. Add your Vercel URL to **Google OAuth** redirect URIs:
    `https://your-app.vercel.app/api/auth/callback/google`
-4. Configure **R2 CORS** in Cloudflare to allow your Vercel domain (or use direct uploads + server fallback).
+6. Configure **R2 CORS** in Cloudflare to allow your Vercel domain (or use direct uploads + server fallback).
+
+If deploy fails, check the Vercel build log. Common fixes: set `AUTH_SECRET`, `DATABASE_URL`, and all `R2_*` vars; ensure Node.js **20+** in project settings.
 
 ## First run
 

@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   description: "Your private cloud for photos, videos and audio — fast, organised and secure.",
   applicationName: "GigaChad Cloud",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "GigaChad Cloud" },
+  icons: {
+    icon: "/gcc.svg",
+    shortcut: "/gcc.svg",
+    apple: "/gcc.svg",
+  },
 };
 
 export const viewport: Viewport = {
