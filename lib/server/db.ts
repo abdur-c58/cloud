@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { config } from "./config";
+import { getDatabasePoolConfig } from "./database-config";
 import { expandSearchTerms } from "./query-terms";
 import * as r2 from "./r2";
 import { ensureDbSchema } from "./schema";
@@ -45,11 +45,7 @@ let pool: Pool | null = null;
 
 async function getPool(): Promise<Pool> {
   if (!pool) {
-    pool = new Pool({
-      connectionString: config.databaseUrl,
-      ssl: { rejectUnauthorized: false },
-      max: 5,
-    });
+    pool = new Pool(getDatabasePoolConfig());
     await ensureDbSchema(pool);
   }
   return pool;

@@ -1,3 +1,5 @@
+import { isDatabaseConfigured } from "./database-config";
+
 function env(key: string, fallback = ""): string {
   return process.env[key]?.trim() || fallback;
 }
@@ -57,42 +59,8 @@ export const config = {
   get openaiConfigured() {
     return Boolean(config.openaiApiKey);
   },
-  get databaseUrl() {
-    const direct = env("DATABASE_URL");
-    if (direct) return direct;
-
-    const password = env("SUPABASE_DB_PASSWORD");
-    if (!password) {
-      throw new Error(
-        "Database not configured. Set DATABASE_URL (recommended on Vercel) or SUPABASE_DB_PASSWORD with SUPABASE_PROJECT_ID.",
-      );
-    }
-
-    // Explicit host — use the Transaction pooler URI host from Supabase dashboard on Vercel.
-    const host = env("SUPABASE_DB_HOST");
-    if (host) {
-      const port = env("SUPABASE_DB_PORT", "6543");
-      const user = env("SUPABASE_DB_USER", "postgres");
-      const database = env("SUPABASE_DB_NAME", "postgres");
-      return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}?sslmode=require`;
-    }
-
-    const projectId = env("SUPABASE_PROJECT_ID");
-    if (!projectId) {
-      throw new Error(
-        "Database not configured. Set DATABASE_URL, or SUPABASE_DB_HOST + SUPABASE_DB_PASSWORD, or SUPABASE_PROJECT_ID + SUPABASE_DB_PASSWORD.",
-      );
-    }
-
-    // Direct connection — works locally; on Vercel prefer DATABASE_URL or pooler host above.
-    return `postgresql://postgres:${encodeURIComponent(password)}@db.${projectId}.supabase.co:5432/postgres?sslmode=require`;
-  },
   get supabaseConfigured() {
-    return Boolean(
-      process.env.DATABASE_URL ||
-        (env("SUPABASE_DB_PASSWORD") &&
-          (env("SUPABASE_DB_HOST") || env("SUPABASE_PROJECT_ID"))),
-    );
+    return isDatabaseConfigured();
   },
   get version() {
     return "1.0.0";
