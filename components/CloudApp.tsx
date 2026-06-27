@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
+import { RefreshCw } from "lucide-react";
 import { api, clearTokens, getSessionToken, uploadToR2 } from "@/lib/api";
 import { invalidateMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { breadcrumbs } from "@/lib/format";
@@ -873,7 +874,7 @@ function ViewControls({
         title="Reindex library"
         aria-label="Reindex"
       >
-        <Icon.Refresh size={17} />
+        <RefreshCw className="size-[17px] shrink-0" strokeWidth={1.8} aria-hidden />
       </button>
       <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
         <SelectTrigger className="h-8 w-[132px]" aria-label="Sort by">

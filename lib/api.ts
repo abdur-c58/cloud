@@ -182,13 +182,12 @@ export const api = {
     form.append("prefix", prefix);
     form.append("file", file, file.name);
     if (relative_path) form.append("relative_path", relative_path);
-    const headers: Record<string, string> = {};
-    if (sessionToken) headers["Authorization"] = `Bearer ${sessionToken}`;
-    if (folderToken) headers["X-Folder-Token"] = folderToken;
 
     return new Promise<{ key: string }>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${API_BASE}/api/storage/upload`);
+      if (sessionToken) xhr.setRequestHeader("Authorization", `Bearer ${sessionToken}`);
+      if (folderToken) xhr.setRequestHeader("X-Folder-Token", folderToken);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) {
           onProgress(Math.round((e.loaded / e.total) * 100));
