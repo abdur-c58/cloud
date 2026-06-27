@@ -405,10 +405,11 @@ export async function insertChatMessage(
   results?: unknown[] | null,
 ): Promise<DbChatMessage> {
   const now = Math.floor(Date.now() / 1000);
+  const resultsJson = results != null ? JSON.stringify(results) : null;
   await (await getPool()).query(
     `INSERT INTO chat_messages (id, conversation_id, user_id, role, content, results, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [id, conversationId, userId, role, content, results ?? null, now],
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+    [id, conversationId, userId, role, content, resultsJson, now],
   );
   return {
     id,

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Icon } from "./Icons";
+import { ChatMarkdown } from "./ChatMarkdown";
+import { ChatResultPreview } from "./ChatResultPreview";
 
 type DisplayMessage = {
   id: string;
@@ -323,26 +325,19 @@ export function ChatPanel({
                             : "rounded-bl-md bg-[var(--surface-raised)] text-[var(--foreground)]"
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{m.content}</p>
+                        {m.role === "assistant" ? (
+                          <ChatMarkdown content={m.content} />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{m.content}</p>
+                        )}
                         {m.results && m.results.length > 0 && (
-                          <div className="mt-2.5 flex flex-col gap-1.5">
+                          <div className="mt-2.5 flex flex-wrap gap-2">
                             {m.results.slice(0, 8).map((r) => (
-                              <button
+                              <ChatResultPreview
                                 key={r.key}
-                                onClick={() => onOpenResult(r.key, r.type)}
-                                className="flex items-center gap-2 rounded-lg bg-[var(--surface)] px-2.5 py-1.5 text-left text-xs transition-all duration-150 hover:bg-[var(--card-hover)] hover:opacity-95"
-                              >
-                                <span className="text-[var(--foreground)]">
-                                  {r.type === "image" ? (
-                                    <Icon.Image size={15} />
-                                  ) : r.type === "video" ? (
-                                    <Icon.Video size={15} />
-                                  ) : (
-                                    <Icon.Audio size={15} />
-                                  )}
-                                </span>
-                                <span className="truncate text-[var(--foreground)]">{r.name}</span>
-                              </button>
+                                result={r}
+                                onOpen={() => onOpenResult(r.key, r.type)}
+                              />
                             ))}
                           </div>
                         )}
