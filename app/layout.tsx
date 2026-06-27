@@ -8,7 +8,7 @@ const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "GigaChad Cloud",
-  description: "Your private cloud for photos, videos and audio — fast, organised and secure.",
+  description: "mlem",
   applicationName: "GigaChad Cloud",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "GigaChad Cloud" },
   icons: {

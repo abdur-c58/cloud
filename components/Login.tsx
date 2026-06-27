@@ -120,7 +120,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
           </div>
           <h1 className="text-2xl font-bold uppercase tracking-[0.08em]">GigaChad Cloud</h1>
           <p className="label-caps mt-2 text-[10px]">
-            Your private vault for photos, video &amp; audio.
+            nigeria
           </p>
         </div>
 
@@ -230,7 +230,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
         )}
 
         <p className="mt-5 text-center text-xs text-muted-foreground">
-          Master password gates access. Google sign-in gives you your own private cloud.
+          wifi
         </p>
       </div>
     </div>
