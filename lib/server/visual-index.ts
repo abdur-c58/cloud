@@ -1,24 +1,41 @@
 import OpenAI from "openai";
-import { pipeline, env, RawImage, type ImageClassificationPipeline } from "@xenova/transformers";
 import { config } from "./config";
 import * as db from "./db";
 import { classify, contentTypeFor } from "./media";
 import * as r2 from "./r2";
-
-env.cacheDir = process.env.TRANSFORMERS_CACHE || ".cache/transformers";
-env.allowLocalModels = true;
 
 const MIN_SCORE = 0.04;
 const TOP_K = 6;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const BATCH_LIMIT = parseInt(process.env.VISUAL_INDEX_BATCH || "40", 10);
 
+type ImageClassificationPipeline = (
+  image: unknown,
+  options?: { topk?: number },
+) => Promise<Array<{ label: string; score: number }> | { label: string; score: number }>;
+
 let classifierPromise: Promise<ImageClassificationPipeline> | null = null;
 let localModelUnavailable = false;
 
-function getClassifier(): Promise<ImageClassificationPipeline> {
+/** Local MobileNet does not run on Vercel serverless (native ONNX libs). Use OpenAI there. */
+export function localVisualIndexEnabled(): boolean {
+  if (process.env.VISUAL_INDEX_LOCAL === "0") return false;
+  if (process.env.VISUAL_INDEX_LOCAL === "1") return true;
+  return !process.env.VERCEL;
+}
+
+async function getClassifier(): Promise<ImageClassificationPipeline> {
+  if (!localVisualIndexEnabled()) {
+    localModelUnavailable = true;
+    throw new Error("local visual index disabled");
+  }
   if (!classifierPromise) {
-    classifierPromise = pipeline("image-classification", "Xenova/mobilenet-a0.25").catch((err) => {
+    classifierPromise = (async () => {
+      const { pipeline, env } = await import("@xenova/transformers");
+      env.cacheDir = process.env.TRANSFORMERS_CACHE || ".cache/transformers";
+      env.allowLocalModels = true;
+      return pipeline("image-classification", "Xenova/mobilenet-a0.25") as Promise<ImageClassificationPipeline>;
+    })().catch((err) => {
       classifierPromise = null;
       localModelUnavailable = true;
       throw err;
@@ -50,8 +67,9 @@ export function tagsFromPredictions(
 }
 
 async function classifyWithLocal(buf: Buffer): Promise<string[]> {
-  if (localModelUnavailable || process.env.VISUAL_INDEX_LOCAL === "0") return [];
+  if (localModelUnavailable || !localVisualIndexEnabled()) return [];
   const classifier = await getClassifier();
+  const { RawImage } = await import("@xenova/transformers");
   const image = await RawImage.fromBlob(new Blob([new Uint8Array(buf)]));
   const raw = await classifier(image, { topk: TOP_K });
   const predictions = Array.isArray(raw) ? raw : [raw];
@@ -205,11 +223,13 @@ export async function visualIndexPending(
 }
 
 export function visualIndexAvailable(): boolean {
-  return !localModelUnavailable || config.openaiConfigured;
+  return localVisualIndexEnabled() || config.openaiConfigured;
 }
 
 export function visualIndexMode(): string {
+  if (process.env.VERCEL && config.openaiConfigured) return "openai";
+  if (process.env.VERCEL) return "openai_or_unavailable";
   if (config.openaiConfigured) return "openai_fallback";
-  if (localModelUnavailable) return "unavailable";
-  return "local_mobilenet";
+  if (localVisualIndexEnabled() && !localModelUnavailable) return "local_mobilenet";
+  return "unavailable";
 }
