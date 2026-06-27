@@ -117,7 +117,11 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
         <div className="mb-7 flex flex-col items-center text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-raised)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/gcc.svg" alt="" className="h-full w-full object-contain p-1.5" />
+            <img
+              src="/gcc.svg"
+              alt=""
+              className="h-[145%] w-[145%] max-w-none shrink-0 object-cover object-center"
+            />
           </div>
           <h1 className="text-2xl font-bold uppercase tracking-[0.08em]"></h1>
           <p className="label-caps mt-2 text-[10px]">
