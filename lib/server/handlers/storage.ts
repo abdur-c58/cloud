@@ -1,4 +1,5 @@
 import * as db from "../db";
+import { nextDuplicateName } from "../../duplicate-name";
 import { ensureUnlocked, folderTokenFromRequest } from "../locks";
 import { classify, contentTypeFor, extOf, isMedia } from "../media";
 import * as r2 from "../r2";
@@ -186,6 +187,52 @@ export async function handleMove(req: Request) {
     });
   }
   return { key: stripUserRoot(user.userId, newKey) };
+}
+
+function siblingNames(listing: { folders: Array<{ name: string }>; files: Array<{ name: string }> }) {
+  return new Set([...listing.folders.map((f) => f.name), ...listing.files.map((f) => f.name)]);
+}
+
+export async function handleCopy(req: Request) {
+  const user = await requireUser(req);
+  const ft = folderTokenFromRequest(req);
+  const body = await req.json();
+  const src = assertOwned(user.userId, body.source);
+  const destPrefix = toStoragePrefix(user.userId, body.destination_prefix ?? "");
+  await ensureUnlocked(src, ft, user.userId);
+  await ensureUnlocked(destPrefix, ft, user.userId);
+
+  const isFolder = src.endsWith("/");
+  if (isFolder && (destPrefix === src || destPrefix.startsWith(src))) {
+    throw new r2.StorageError("Cannot copy a folder into itself.");
+  }
+
+  const listing = await r2.listDir(destPrefix);
+  const existing = siblingNames(listing);
+  const srcName = isFolder ? src.replace(/\/$/, "").split("/").pop()! : src.split("/").pop()!;
+  const newName = body.new_name
+    ? r2.sanitizeSegment(body.new_name)
+    : nextDuplicateName(srcName, existing, isFolder);
+
+  if (isFolder) {
+    const dst = `${destPrefix}${r2.sanitizeSegment(newName)}/`;
+    const copied = await r2.copyTree(src, dst);
+    const srcNorm = src.endsWith("/") ? src : `${src}/`;
+    const dstNorm = dst;
+    for (const key of copied) {
+      if (key.endsWith("/")) continue;
+      const rel = key.slice(dstNorm.length);
+      const srcKey = `${srcNorm}${rel}`;
+      const fileName = key.split("/").pop() || newName;
+      await db.cloneItemRecord(user.userId, srcKey, key, fileName);
+    }
+    return { key: stripUserRoot(user.userId, dst), name: newName };
+  }
+
+  const dst = `${destPrefix}${r2.sanitizeSegment(newName)}`;
+  await r2.copyKey(src, dst);
+  await db.cloneItemRecord(user.userId, src, dst, newName);
+  return { key: stripUserRoot(user.userId, dst), name: newName };
 }
 
 export async function handleFavorite(req: Request) {

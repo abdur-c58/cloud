@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { getDatabasePoolConfig } from "./database-config";
+import { classify, contentTypeFor, extOf } from "./media";
 import { expandSearchTerms } from "./query-terms";
 import * as r2 from "./r2";
 import { ensureDbSchema } from "./schema";
@@ -155,6 +156,62 @@ export async function getItem(userId: string, key: string): Promise<DbItem | nul
   return (res.rows[0] as DbItem) || null;
 }
 
+export async function cloneItemRecord(
+  userId: string,
+  srcKey: string,
+  dstKey: string,
+  newName: string,
+): Promise<void> {
+  const old = await getItem(userId, srcKey);
+  const folder = r2.folderOf(dstKey);
+  if (!old) {
+    await upsertItem(userId, {
+      key: dstKey,
+      name: newName,
+      folder,
+      type: classify(newName),
+      ext: extOf(newName),
+      size: null,
+      content_type: contentTypeFor(newName),
+      last_modified: null,
+    });
+    return;
+  }
+  await (await getPool()).query(
+    `INSERT INTO items (
+       user_id, key, name, folder, type, ext, size, content_type, last_modified,
+       favorite, tags, caption, visual_tags, visual_indexed_at, visual_index_size, indexed_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     ON CONFLICT (user_id, key) DO UPDATE SET
+       name = EXCLUDED.name, folder = EXCLUDED.folder, type = EXCLUDED.type,
+       ext = EXCLUDED.ext, size = EXCLUDED.size, content_type = EXCLUDED.content_type,
+       last_modified = EXCLUDED.last_modified, favorite = EXCLUDED.favorite,
+       tags = EXCLUDED.tags, caption = EXCLUDED.caption, visual_tags = EXCLUDED.visual_tags,
+       visual_indexed_at = EXCLUDED.visual_indexed_at, visual_index_size = EXCLUDED.visual_index_size,
+       indexed_at = EXCLUDED.indexed_at`,
+    [
+      userId,
+      dstKey,
+      newName,
+      folder,
+      old.type,
+      old.ext,
+      old.size,
+      old.content_type,
+      old.last_modified,
+      old.favorite,
+      old.tags,
+      old.caption,
+      old.visual_tags,
+      old.visual_indexed_at,
+      old.visual_index_size,
+      Math.floor(Date.now() / 1000),
+    ],
+  );
+}
+
+export const VISUAL_INDEX_UNREADABLE = "__unreadable__";
+
 export async function setVisualIndex(
   userId: string,
   key: string,
@@ -170,6 +227,18 @@ export async function setVisualIndex(
   );
 }
 
+/** Clears failed attempts that were marked indexed with no tags (allows retry on reindex). */
+export async function resetStuckVisualIndexAttempts(userId: string): Promise<number> {
+  const res = await (await getPool()).query(
+    `UPDATE items SET visual_indexed_at = NULL, visual_index_size = NULL
+     WHERE user_id = $1 AND type = 'image'
+       AND COALESCE(visual_tags, '') = ''
+       AND visual_indexed_at IS NOT NULL`,
+    [userId],
+  );
+  return res.rowCount ?? 0;
+}
+
 export async function listImagesNeedingVisualIndex(
   userId: string,
   limit: number,
@@ -177,13 +246,14 @@ export async function listImagesNeedingVisualIndex(
   const res = await (await getPool()).query(
     `SELECT key, size FROM items
      WHERE user_id = $1 AND type = 'image'
+       AND COALESCE(visual_tags, '') <> $3
        AND (
          visual_indexed_at IS NULL
          OR visual_index_size IS DISTINCT FROM size
        )
      ORDER BY indexed_at DESC
      LIMIT $2`,
-    [userId, limit],
+    [userId, limit, VISUAL_INDEX_UNREADABLE],
   );
   return res.rows as Array<{ key: string; size: number | null }>;
 }
@@ -192,11 +262,12 @@ export async function countImagesNeedingVisualIndex(userId: string): Promise<num
   const res = await (await getPool()).query(
     `SELECT COUNT(*)::int AS c FROM items
      WHERE user_id = $1 AND type = 'image'
+       AND COALESCE(visual_tags, '') <> $2
        AND (
          visual_indexed_at IS NULL
          OR visual_index_size IS DISTINCT FROM size
        )`,
-    [userId],
+    [userId, VISUAL_INDEX_UNREADABLE],
   );
   return res.rows[0]?.c ?? 0;
 }
@@ -644,6 +715,21 @@ export async function deleteSharedItemsUnder(shareId: string, prefix: string): P
     shareId,
     `${prefix}%`,
   ]);
+}
+
+export async function renameSharedPrefix(
+  shareId: string,
+  oldPrefix: string,
+  newPrefix: string,
+): Promise<void> {
+  const offset = oldPrefix.length + 1;
+  await (await getPool()).query(
+    `UPDATE shared_items SET
+       key = $1 || substring(key from $2),
+       folder = $1 || substring(folder from $2)
+     WHERE share_id = $3 AND key LIKE $4`,
+    [newPrefix, offset, shareId, `${oldPrefix}%`],
+  );
 }
 
 export async function getSharedItem(shareId: string, key: string): Promise<DbSharedItem | null> {

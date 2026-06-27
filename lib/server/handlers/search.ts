@@ -26,6 +26,7 @@ export async function handleReindex(req: Request) {
     });
     count++;
   }
+  await db.resetStuckVisualIndexAttempts(user.userId);
   const visual = await visualIndexPending(user.userId);
   return { indexed: count, ...visual };
 }
@@ -48,7 +49,12 @@ async function visible(userId: string, rows: db.DbItem[], folderToken: string | 
       favorite: Boolean(r.favorite),
       tags: r.tags ? r.tags.split(",").filter(Boolean) : [],
       caption: r.caption,
-      visual_tags: r.visual_tags ? r.visual_tags.split(",").filter(Boolean) : [],
+      visual_tags: r.visual_tags
+        ? r.visual_tags
+            .split(",")
+            .filter(Boolean)
+            .filter((t) => t !== db.VISUAL_INDEX_UNREADABLE)
+        : [],
     });
   }
   return out;

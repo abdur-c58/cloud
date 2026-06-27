@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import * as db from "../db";
+import { nextDuplicateName } from "../../duplicate-name";
 import { classify, contentTypeFor, extOf, isMedia } from "../media";
 import * as r2 from "../r2";
 import { ApiError, requireUser } from "../security";
@@ -234,6 +235,85 @@ export async function handleSharedImport(req: Request, shareId: string) {
     }
   }
   return { imported };
+}
+
+export async function handleSharedMove(req: Request, shareId: string) {
+  const user = await requireUser(req);
+  await requireMember(shareId, user.userId);
+  const body = await req.json();
+  const src = assertSharedKey(shareId, body.source);
+  const isFolder = src.endsWith("/");
+  const base = isFolder ? src.replace(/\/$/, "").split("/").pop()! : src.split("/").pop()!;
+  const name = body.new_name ? r2.sanitizeSegment(body.new_name) : base;
+  const destPrefix = toSharedPrefix(shareId, body.destination_prefix || "");
+  const dst = `${destPrefix}${name}${isFolder ? "/" : ""}`;
+  const newKey = await r2.moveKey(src, dst);
+  if (isFolder) {
+    await db.renameSharedPrefix(shareId, src, newKey);
+  } else {
+    const old = await db.getSharedItem(shareId, src);
+    await db.deleteSharedItem(shareId, src);
+    await indexSharedFile(
+      shareId,
+      newKey,
+      user.userId,
+      old?.imported_from ?? null,
+      old?.size ?? null,
+    );
+  }
+  return { key: stripSharedRoot(shareId, newKey) };
+}
+
+function siblingNames(listing: { folders: Array<{ name: string }>; files: Array<{ name: string }> }) {
+  return new Set([...listing.folders.map((f) => f.name), ...listing.files.map((f) => f.name)]);
+}
+
+export async function handleSharedCopy(req: Request, shareId: string) {
+  const user = await requireUser(req);
+  await requireMember(shareId, user.userId);
+  const body = await req.json();
+  const src = assertSharedKey(shareId, body.source);
+  const destPrefix = toSharedPrefix(shareId, body.destination_prefix ?? "");
+  const isFolder = src.endsWith("/");
+  if (isFolder && (destPrefix === src || destPrefix.startsWith(src))) {
+    throw new r2.StorageError("Cannot copy a folder into itself.");
+  }
+
+  const listing = await r2.listDir(destPrefix);
+  const existing = siblingNames(listing);
+  const srcName = isFolder ? src.replace(/\/$/, "").split("/").pop()! : src.split("/").pop()!;
+  const newName = body.new_name
+    ? r2.sanitizeSegment(body.new_name)
+    : nextDuplicateName(srcName, existing, isFolder);
+
+  if (isFolder) {
+    const dst = `${destPrefix}${r2.sanitizeSegment(newName)}/`;
+    const copied = await r2.copyTree(src, dst);
+    const srcNorm = src.endsWith("/") ? src : `${src}/`;
+    const dstNorm = dst;
+    for (const key of copied) {
+      if (key.endsWith("/")) continue;
+      const rel = key.slice(dstNorm.length);
+      const srcKey = `${srcNorm}${rel}`;
+      const old = await db.getSharedItem(shareId, srcKey);
+      const meta = await r2.headObject(key);
+      await indexSharedFile(
+        shareId,
+        key,
+        user.userId,
+        old?.imported_from ?? null,
+        meta?.size ?? null,
+      );
+    }
+    return { key: stripSharedRoot(shareId, dst), name: newName };
+  }
+
+  const dst = `${destPrefix}${r2.sanitizeSegment(newName)}`;
+  await r2.copyKey(src, dst);
+  const old = await db.getSharedItem(shareId, src);
+  const meta = await r2.headObject(dst);
+  await indexSharedFile(shareId, dst, user.userId, old?.imported_from ?? null, meta?.size ?? null);
+  return { key: stripSharedRoot(shareId, dst), name: newName };
 }
 
 export async function handleSharedMembers(req: Request, shareId: string) {

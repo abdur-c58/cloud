@@ -139,7 +139,8 @@ export async function visualIndexImage(
     !force &&
     existing?.visual_indexed_at &&
     existing.visual_index_size === size &&
-    existing.visual_tags
+    existing.visual_tags &&
+    existing.visual_tags !== db.VISUAL_INDEX_UNREADABLE
   ) {
     return {
       indexed: true,
@@ -151,7 +152,13 @@ export async function visualIndexImage(
 
   const bytes = await r2.getObjectBytes(key, MAX_IMAGE_BYTES);
   if (!bytes) {
-    await db.setVisualIndex(userId, key, "", existing?.caption || "", size);
+    await db.setVisualIndex(
+      userId,
+      key,
+      db.VISUAL_INDEX_UNREADABLE,
+      existing?.caption || "",
+      size,
+    );
     return { indexed: false, tags: [], skipped: "unreadable_or_too_large", source: "none" };
   }
 
@@ -185,11 +192,11 @@ export async function visualIndexImage(
           .join(", ")
       : "");
 
-  await db.setVisualIndex(userId, key, tagStr, caption, size);
-
   if (!tags.length) {
     return { indexed: false, tags: [], skipped: "no_tags", source };
   }
+
+  await db.setVisualIndex(userId, key, tagStr, caption, size);
   return { indexed: true, tags, source };
 }
 

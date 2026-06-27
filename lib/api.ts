@@ -237,6 +237,12 @@ export const api = {
       body: { source, destination_prefix, new_name },
     }),
 
+  copy: (source: string, destination_prefix: string, new_name?: string) =>
+    request<{ key: string; name: string }>("/api/storage/copy", {
+      method: "POST",
+      body: { source, destination_prefix, new_name },
+    }),
+
   favorite: (key: string, favorite: boolean) =>
     request<{ ok: boolean }>("/api/storage/favorite", {
       method: "POST",
@@ -404,6 +410,18 @@ export const api = {
     request<{ imported: string[] }>(`/api/shared/${shareId}/import`, {
       method: "POST",
       body: { sources, destination_prefix },
+    }),
+
+  sharedMove: (shareId: string, source: string, destination_prefix: string, new_name?: string) =>
+    request<{ key: string }>(`/api/shared/${shareId}/move`, {
+      method: "POST",
+      body: { source, destination_prefix, new_name },
+    }),
+
+  sharedCopy: (shareId: string, source: string, destination_prefix: string, new_name?: string) =>
+    request<{ key: string; name: string }>(`/api/shared/${shareId}/copy`, {
+      method: "POST",
+      body: { source, destination_prefix, new_name },
     }),
 
   sharedMembers: (shareId: string) =>

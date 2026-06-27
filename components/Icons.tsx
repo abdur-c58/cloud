@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cloud,
+  Copy,
   Download,
   File,
   Folder,
@@ -65,6 +66,7 @@ export const Icon = {
     <Star size={size} fill="currentColor" strokeWidth={0} className={className} aria-hidden {...props} />
   ),
   Trash: wrap(Trash2),
+  Copy: wrap(Copy),
   Download: wrap(Download),
   Move: wrap(FolderInput),
   ChevronRight: wrap(ChevronRight),

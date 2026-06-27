@@ -2,8 +2,11 @@
 
 import { useSession } from "next-auth/react";
 import { formatBytes } from "@/lib/format";
+import type { DragItemPayload, DropDestination } from "@/lib/dnd";
+import { canDropItem, getDropLabel } from "@/lib/dnd";
 import type { IndexSummary, SharedFolderInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { DropTarget } from "./DropTarget";
 import { Icon } from "./Icons";
 import { NavTab } from "./NavTab";
 
@@ -30,6 +33,8 @@ export function Sidebar({
   onOpenChat,
   onLogout,
   onClose,
+  draggingItem,
+  onDropOnFolder,
 }: {
   active: NavKey;
   onNavigate: (key: NavKey) => void;
@@ -43,6 +48,8 @@ export function Sidebar({
   onOpenChat: () => void;
   onLogout: () => void;
   onClose?: () => void;
+  draggingItem?: DragItemPayload | null;
+  onDropOnFolder?: (dest: DropDestination) => void;
 }) {
   const { data: session } = useSession();
   const userName = session?.user?.name?.trim() || "GigaChad";
@@ -115,45 +122,64 @@ export function Sidebar({
           {sharedFolders.length === 0 && (
             <p className="px-3 py-2 text-[10px] text-muted-foreground">No shared folders yet</p>
           )}
-          {sharedFolders.map((s) => (
-            <div
-              key={s.id}
-              className={cn(
-                "flex items-center gap-0.5",
-                activeShareId === s.id && "nav-tab--active rounded-[var(--radius)]",
-              )}
-            >
-              <button
-                onClick={() => onOpenShare(s)}
+          {sharedFolders.map((s) => {
+            const dest: DropDestination = { prefix: "", scope: "shared", shareId: s.id };
+            const canDrop = draggingItem ? canDropItem(draggingItem, dest) : false;
+            const dropLabel = draggingItem ? getDropLabel(draggingItem, dest) : "";
+
+            const row = (
+              <div
                 className={cn(
-                  "nav-tab flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm",
-                  activeShareId === s.id
-                    ? "text-[var(--foreground)]"
-                    : "text-muted-foreground hover:text-[var(--foreground)]",
+                  "flex items-center gap-0.5",
+                  activeShareId === s.id && "nav-tab--active rounded-[var(--radius)]",
                 )}
               >
-                <Icon.Folder size={16} className="shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                {s.is_owner && (
-                  <span className="label-caps shrink-0 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-1.5 py-0.5 text-[9px] text-muted-foreground">
-                    Host
-                  </span>
-                )}
-              </button>
-              {s.is_owner && (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onManageShare(s);
-                  }}
-                  className="btn-ghost mr-1 shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 text-muted-foreground transition-all duration-150 hover:border-[var(--border-hover)] hover:text-[var(--foreground)]"
-                  aria-label="Manage"
+                  onClick={() => onOpenShare(s)}
+                  className={cn(
+                    "nav-tab flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm",
+                    activeShareId === s.id
+                      ? "text-[var(--foreground)]"
+                      : "text-muted-foreground hover:text-[var(--foreground)]",
+                  )}
                 >
-                  <Icon.Dots size={14} />
+                  <Icon.Folder size={16} className="shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                  {s.is_owner && (
+                    <span className="label-caps shrink-0 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-1.5 py-0.5 text-[9px] text-muted-foreground">
+                      Host
+                    </span>
+                  )}
                 </button>
-              )}
-            </div>
-          ))}
+                {s.is_owner && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onManageShare(s);
+                    }}
+                    className="btn-ghost mr-1 shrink-0 rounded-md border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 text-muted-foreground transition-all duration-150 hover:border-[var(--border-hover)] hover:text-[var(--foreground)]"
+                    aria-label="Manage"
+                  >
+                    <Icon.Dots size={14} />
+                  </button>
+                )}
+              </div>
+            );
+
+            if (!draggingItem || !onDropOnFolder) return <div key={s.id}>{row}</div>;
+
+            return (
+              <DropTarget
+                key={s.id}
+                label={dropLabel}
+                disabled={!canDrop}
+                onDrop={() => onDropOnFolder(dest)}
+                className="rounded-[var(--radius)]"
+              >
+                {row}
+              </DropTarget>
+            );
+          })}
         </nav>
       </div>
 

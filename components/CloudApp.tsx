@@ -4,6 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { RefreshCw } from "lucide-react";
 import { api, clearTokens, getSessionToken, uploadToR2 } from "@/lib/api";
+import type { ClipboardItem } from "@/lib/clipboard";
+import {
+  canDropItem,
+  getDropLabel,
+  isInternalDrag,
+  type DragItemPayload,
+  type DropDestination,
+} from "@/lib/dnd";
 import { invalidateMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { breadcrumbs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -15,6 +23,7 @@ import { FolderPasswordModal, LockMode } from "./FolderPasswordModal";
 import { Icon } from "./Icons";
 import { ImportToSharedModal } from "./ImportToSharedModal";
 import { JoinSharedModal } from "./JoinSharedModal";
+import { LibraryContextMenu } from "./LibraryContextMenu";
 import { Login } from "./Login";
 import { MediaViewer } from "./MediaViewer";
 import { MoveModal } from "./MoveModal";
@@ -74,6 +83,10 @@ export function CloudApp() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const [dragging, setDragging] = useState(false);
+  const [draggingItem, setDraggingItem] = useState<DragItemPayload | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardItem | null>(null);
 
   // ----------------------------- auth bootstrap ----------------------------- //
   useEffect(() => {
@@ -235,6 +248,59 @@ export function CloudApp() {
     }
   };
 
+  const itemScope = activeShare ? ("shared" as const) : ("personal" as const);
+
+  const copyToClipboard = (item: StorageItem) => {
+    const key =
+      item.type === "folder" && !item.key.endsWith("/") ? `${item.key}/` : item.key;
+    setClipboard({
+      key,
+      name: item.name,
+      type: item.type,
+      scope: itemScope,
+      shareId: activeShare?.id,
+    });
+    toast(`Copied “${item.name}”`, "success");
+  };
+
+  const duplicateItem = async (item: StorageItem, destPrefix = prefix) => {
+    const sourceKey =
+      item.type === "folder" && !item.key.endsWith("/") ? `${item.key}/` : item.key;
+    try {
+      const res = activeShare
+        ? await api.sharedCopy(activeShare.id, sourceKey, destPrefix)
+        : await api.copy(sourceKey, destPrefix);
+      toast(`Duplicated as “${res.name}”`, "success");
+      refresh();
+      if (!activeShare) loadSummary();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Duplicate failed", "error");
+    }
+  };
+
+  const pasteClipboard = async () => {
+    if (!clipboard) return;
+    if (clipboard.scope === "shared") {
+      if (!activeShare || clipboard.shareId !== activeShare.id) {
+        toast("Can't paste shared items here", "error");
+        return;
+      }
+    } else if (activeShare) {
+      toast("Can't paste library items into a shared folder here — use Import", "error");
+      return;
+    }
+    await duplicateItem(
+      {
+        key: clipboard.key,
+        name: clipboard.name,
+        type: clipboard.type as StorageItem["type"],
+        size: null,
+        last_modified: null,
+      },
+      prefix,
+    );
+  };
+
   const onCardAction = (action: CardAction, item: StorageItem) => {
     switch (action) {
       case "open":
@@ -255,6 +321,12 @@ export function CloudApp() {
         break;
       case "move":
         setMoveItem(item);
+        break;
+      case "copy":
+        copyToClipboard(item);
+        break;
+      case "duplicate":
+        void duplicateItem(item);
         break;
       case "tags":
         setTagsItem(item);
@@ -371,13 +443,21 @@ export function CloudApp() {
     toast("Reindexing library…", "info");
     try {
       const res = await api.reindex();
-      let visual = "";
-      if (res.visual_indexed != null) {
-        visual = ` · ${res.visual_indexed} photo${res.visual_indexed === 1 ? "" : "s"} visually tagged`;
-        if (res.visual_pending) visual += ` (${res.visual_pending} remaining)`;
-        else if (res.visual_failed) visual += ` · ${res.visual_failed} could not be tagged`;
+      const parts = [`Indexed ${res.indexed} file${res.indexed === 1 ? "" : "s"}`];
+      const visualParts: string[] = [];
+      if (res.visual_indexed) {
+        visualParts.push(
+          `${res.visual_indexed} photo${res.visual_indexed === 1 ? "" : "s"} visually tagged`,
+        );
       }
-      toast(`Indexed ${res.indexed} files${visual}`, "success");
+      if (res.visual_pending) {
+        visualParts.push(`${res.visual_pending} photo${res.visual_pending === 1 ? "" : "s"} still pending`);
+      }
+      if (res.visual_failed) {
+        visualParts.push(`${res.visual_failed} photo${res.visual_failed === 1 ? "" : "s"} could not be tagged`);
+      }
+      if (visualParts.length) parts.push(visualParts.join(" · "));
+      toast(parts.join(" · "), "success");
       loadSummary();
       refresh();
     } catch (e) {
@@ -469,8 +549,58 @@ export function CloudApp() {
     }
   };
 
-  // drag & drop
-  const [dragging, setDragging] = useState(false);
+  const itemDragPayload = (item: StorageItem): DragItemPayload => {
+    const key =
+      item.type === "folder" && !item.key.endsWith("/") ? `${item.key}/` : item.key;
+    return {
+      key,
+      name: item.name,
+      type: item.type,
+      scope: activeShare ? "shared" : "personal",
+      shareId: activeShare?.id,
+    };
+  };
+
+  const folderDropProps = (folder: StorageItem) => {
+    if (!draggingItem) return undefined;
+    const dest: DropDestination = {
+      prefix: folder.key.endsWith("/") ? folder.key : `${folder.key}/`,
+      scope: activeShare ? "shared" : "personal",
+      shareId: activeShare?.id,
+    };
+    const allowed = canDropItem(draggingItem, dest) && !folder.locked;
+    return {
+      label: getDropLabel(draggingItem, dest),
+      disabled: !allowed,
+      onDrop: () => void handleItemDrop(draggingItem, dest),
+    };
+  };
+
+  const handleItemDrop = async (source: DragItemPayload, dest: DropDestination) => {
+    if (!canDropItem(source, dest)) return;
+    setDraggingItem(null);
+    try {
+      if (dest.scope === "shared" && source.scope === "personal") {
+        const sourceKey =
+          source.type === "folder" && !source.key.endsWith("/") ? `${source.key}/` : source.key;
+        await api.sharedImport(dest.shareId!, [sourceKey], dest.prefix);
+        toast(`Copied “${source.name}”`, "success");
+      } else if (dest.scope === "shared" && source.scope === "shared") {
+        await api.sharedMove(dest.shareId!, source.key, dest.prefix);
+        invalidateMediaUrl(source.key, dest.shareId);
+        toast(`Moved “${source.name}”`, "success");
+      } else {
+        await api.move(source.key, dest.prefix);
+        invalidateMediaUrl(source.key);
+        toast(`Moved “${source.name}”`, "success");
+      }
+      refresh();
+      if (!activeShare) loadSummary();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't move item", "error");
+    }
+  };
+
   const canUpload = Boolean(activeShare || (nav === "library" && !debouncedQuery));
 
   // open a result from chat
@@ -534,7 +664,72 @@ export function CloudApp() {
     onManageShare: setManageShare,
     onOpenChat: () => setChatOpen(true),
     onLogout: () => setLogoutOpen(true),
+    draggingItem,
+    onDropOnFolder: (dest: DropDestination) => {
+      if (draggingItem) void handleItemDrop(draggingItem, dest);
+    },
   };
+
+  const renderFileCard = (item: StorageItem) => {
+    const payload = itemDragPayload(item);
+    return (
+      <FileCard
+        key={item.key}
+        item={item}
+        view={view}
+        onAction={onCardAction}
+        variant={activeShare ? "shared" : "personal"}
+        shareId={activeShare?.id}
+        draggable={!item.locked}
+        dragPayload={payload}
+        onDragStart={() => setDraggingItem(payload)}
+        onDragEnd={() => setDraggingItem(null)}
+        drop={item.type === "folder" ? folderDropProps(item) : undefined}
+      />
+    );
+  };
+
+  const canBrowseContext = Boolean((activeShare || nav === "library") && !debouncedQuery);
+  const pasteEnabled =
+    Boolean(clipboard) &&
+    (activeShare
+      ? clipboard!.scope === "shared" && clipboard!.shareId === activeShare.id
+      : clipboard!.scope === "personal");
+
+  const libraryMenuItems = [
+    {
+      label: "New folder",
+      icon: <Icon.Plus size={16} />,
+      onClick: () => setNewFolderOpen(true),
+    },
+    {
+      label: "Upload files",
+      icon: <Icon.Upload size={16} />,
+      onClick: () => fileInputRef.current?.click(),
+    },
+    {
+      label: "Upload folder",
+      icon: <Icon.Folder size={16} />,
+      onClick: () => folderInputRef.current?.click(),
+    },
+    ...(activeShare
+      ? [
+          {
+            label: "Import from library",
+            icon: <Icon.Download size={16} />,
+            onClick: () => setImportOpen(true),
+            separatorBefore: true,
+          },
+        ]
+      : []),
+    {
+      label: clipboard ? `Paste “${clipboard.name}”` : "Paste here",
+      icon: <Icon.Copy size={16} />,
+      onClick: () => void pasteClipboard(),
+      disabled: !pasteEnabled,
+      separatorBefore: true,
+    },
+  ];
 
   return (
     <div className="glow-page flex h-dvh overflow-hidden text-[var(--foreground)]">
@@ -547,14 +742,20 @@ export function CloudApp() {
       <div
         className="relative flex min-w-0 flex-1 flex-col"
         onDragOver={(e) => {
+          if (isInternalDrag(e.dataTransfer)) {
+            e.preventDefault();
+            return;
+          }
           if (!canUpload) return;
           e.preventDefault();
           setDragging(true);
         }}
         onDragLeave={(e) => {
+          if (isInternalDrag(e.dataTransfer)) return;
           if (e.currentTarget === e.target) setDragging(false);
         }}
         onDrop={(e) => {
+          if (isInternalDrag(e.dataTransfer)) return;
           if (!canUpload) return;
           e.preventDefault();
           setDragging(false);
@@ -653,44 +854,31 @@ export function CloudApp() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-4 py-5 safe-pb sm:px-6">
-          {loading ? (
-            <SkeletonGrid view={view} />
-          ) : isEmpty ? (
-            <EmptyState
-              nav={nav}
-              query={debouncedQuery}
-              canUpload={canUpload}
-              onUpload={() => fileInputRef.current?.click()}
-            />
-          ) : view === "grid" ? (
-            <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-              {[...sortedFolders, ...sortedFiles].map((item) => (
-                <FileCard
-                  key={item.key}
-                  item={item}
-                  view="grid"
-                  onAction={onCardAction}
-                  variant={activeShare ? "shared" : "personal"}
-                  shareId={activeShare?.id}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="mx-auto flex max-w-3xl flex-col gap-0.5">
-              {[...sortedFolders, ...sortedFiles].map((item) => (
-                <FileCard
-                  key={item.key}
-                  item={item}
-                  view="list"
-                  onAction={onCardAction}
-                  variant={activeShare ? "shared" : "personal"}
-                  shareId={activeShare?.id}
-                />
-              ))}
-            </div>
-          )}
-        </main>
+        <LibraryContextMenu
+          items={libraryMenuItems}
+          enabled={canBrowseContext && canUpload}
+        >
+          <main className="min-h-full flex-1 overflow-y-auto px-4 py-5 safe-pb sm:px-6">
+            {loading ? (
+              <SkeletonGrid view={view} />
+            ) : isEmpty ? (
+              <EmptyState
+                nav={nav}
+                query={debouncedQuery}
+                canUpload={canUpload}
+                onUpload={() => fileInputRef.current?.click()}
+              />
+            ) : view === "grid" ? (
+              <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {[...sortedFolders, ...sortedFiles].map(renderFileCard)}
+              </div>
+            ) : (
+              <div className="mx-auto flex max-w-3xl flex-col gap-0.5">
+                {[...sortedFolders, ...sortedFiles].map(renderFileCard)}
+              </div>
+            )}
+          </main>
+        </LibraryContextMenu>
 
         {/* Drag overlay */}
         {dragging && (
