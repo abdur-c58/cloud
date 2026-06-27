@@ -115,12 +115,13 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
     <div className="glow-page flex min-h-dvh items-center justify-center p-4 text-[var(--foreground)]">
       <div className="w-full max-w-sm animate-slide-up">
         <div className="mb-7 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-raised)] text-[var(--foreground)]">
-            <Icon.Cloud size={28} />
+          <div className="mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-raised)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/gcc.svg" alt="" className="h-full w-full object-contain p-1.5" />
           </div>
-          <h1 className="text-2xl font-bold uppercase tracking-[0.08em]">GigaChad Cloud</h1>
+          <h1 className="text-2xl font-bold uppercase tracking-[0.08em]"></h1>
           <p className="label-caps mt-2 text-[10px]">
-            nigeria
+            
           </p>
         </div>
 
