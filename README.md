@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GigaChad Cloud
 
-## Getting Started
+Your private cloud for **photos, videos and audio** — backed by Cloudflare R2,
+with a secure Next.js API and a fast, modern UI. **Deploys entirely on Vercel.**
 
-First, run the development server:
+![stack](https://img.shields.io/badge/app-Next.js%2016-black) ![stack](https://img.shields.io/badge/storage-Cloudflare%20R2-f38020) ![stack](https://img.shields.io/badge/db-Supabase%20Postgres-3ECF8E)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Features
+
+- 📁 **Folders & organisation** — nested folders, move, rename, grid/list views, sort, breadcrumbs.
+- 🖼️ **Every format** — images, video and audio with a built-in lightbox/player (range‑streamed from R2).
+- 🔒 **Password-protected folders** — bcrypt-hashed per-folder passwords; locked folders need an unlock token.
+- 🛡️ **Security** — R2 credentials never reach the browser. Master password + Google OAuth per user.
+- 🔎 **Indexing & search** — Supabase Postgres index for instant search by name, tags and captions.
+- 🤖 **OpenAI features** — chat assistant + auto-tagging for photos. *(Optional.)*
+- 🚀 **Direct-to-R2 uploads** — browser uploads straight to R2 with server fallback.
+
+## Architecture
+
+```
+Browser (Next.js 16)
+   │  Bearer session JWT + X-Folder-Token
+   ▼
+Next.js API routes (lib/server)  ──►  Cloudflare R2
+   │
+   └─►  Supabase Postgres
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **UI** — `app/`, `components/`, `lib/api.ts`
+- **Server** — `lib/server/` + `app/api/**` (TypeScript, runs on Vercel Node.js)
+- **Legacy** — `backend/` Python FastAPI (optional for local dev; no longer required)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Local setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+npm install
+cp .env.example .env.local   # fill in secrets
+npm run dev
+```
 
-## Learn More
+Open <http://localhost:3000>. Sign in: master password → Google.
 
-To learn more about Next.js, take a look at the following resources:
+All secrets go in **`.env.local`** (see `.env.example`). No separate Python server needed.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Optional: Python backend (legacy)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```powershell
+./dev.ps1   # runs Python + Next.js together
+```
 
-## Deploy on Vercel
+Set `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000` to use the old FastAPI backend instead.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy to Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push to GitHub and import in [Vercel](https://vercel.com).
+2. Add environment variables from `.env.example` in the Vercel dashboard.
+3. Add your Vercel URL to **Google OAuth** redirect URIs:
+   `https://your-app.vercel.app/api/auth/callback/google`
+4. Configure **R2 CORS** in Cloudflare to allow your Vercel domain (or use direct uploads + server fallback).
+
+## First run
+
+1. Master password → Google sign-in.
+2. **Upload** media (direct to R2, with server fallback).
+3. **Reindex** (↻) to refresh search/stats.
+
+## Tech
+
+Next.js 16 · React 19 · Auth.js · AWS SDK v3 (R2) · jose · bcryptjs · pg · OpenAI · Supabase · Cloudflare R2

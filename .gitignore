@@ -24,6 +24,16 @@
 .DS_Store
 *.pem
 
+# python backend
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/routers/__pycache__/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
