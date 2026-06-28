@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { RefreshCw } from "lucide-react";
 import { api, clearTokens, getSessionToken, uploadToR2 } from "@/lib/api";
@@ -14,6 +15,13 @@ import {
 } from "@/lib/dnd";
 import { invalidateMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { breadcrumbs } from "@/lib/format";
+import {
+  currentLocation,
+  locationFromSearchParams,
+  locationsMatch,
+  resolveShare,
+  searchParamsFromLocation,
+} from "@/lib/navigation-url";
 import { cn } from "@/lib/utils";
 import { AuthError, HealthInfo, IndexSummary, LockedError, SharedFolderInfo, SharedMemberInfo, StorageItem } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
@@ -47,6 +55,9 @@ type SortKey = "name" | "date" | "size";
 const MEDIA_TYPES = new Set(["image", "video", "audio"]);
 
 export function CloudApp() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [health, setHealth] = useState<HealthInfo | null>(null);
 
@@ -75,6 +86,7 @@ export function CloudApp() {
   const [lockModal, setLockModal] = useState<{ mode: LockMode; folder: string } | null>(null);
 
   const [sharedFolders, setSharedFolders] = useState<SharedFolderInfo[]>([]);
+  const [sharedLoaded, setSharedLoaded] = useState(false);
   const [activeShare, setActiveShare] = useState<SharedFolderInfo | null>(null);
   const [joinOpen, setJoinOpen] = useState(false);
   const [manageShare, setManageShare] = useState<SharedFolderInfo | null>(null);
@@ -90,12 +102,17 @@ export function CloudApp() {
   const [dragging, setDragging] = useState(false);
   const [draggingItem, setDraggingItem] = useState<DragItemPayload | null>(null);
   const [clipboard, setClipboard] = useState<ClipboardItem | null>(null);
+  const locationHydratedRef = useRef(false);
 
   // ----------------------------- auth bootstrap ----------------------------- //
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(null));
     setAuthed(Boolean(getSessionToken()));
   }, []);
+
+  useEffect(() => {
+    if (!authed) locationHydratedRef.current = false;
+  }, [authed]);
 
   // persisted view preference
   useEffect(() => {
@@ -113,9 +130,62 @@ export function CloudApp() {
   }, [query]);
 
   const loadShared = useCallback(() => {
-    if (authed) api.listShared().then((r) => setSharedFolders(r.folders)).catch(() => {});
+    if (!authed) {
+      setSharedLoaded(false);
+      return;
+    }
+    api
+      .listShared()
+      .then((r) => setSharedFolders(r.folders))
+      .catch(() => setSharedFolders([]))
+      .finally(() => setSharedLoaded(true));
   }, [authed]);
   useEffect(() => loadShared(), [loadShared]);
+
+  const applyLocation = useCallback(
+    (loc: ReturnType<typeof locationFromSearchParams>) => {
+      setNav(loc.nav);
+      setPrefix(loc.prefix);
+      setActiveShare(resolveShare(loc.shareId, sharedFolders));
+    },
+    [sharedFolders],
+  );
+
+  // Restore navigation from URL (initial load, refresh, back/forward)
+  useEffect(() => {
+    if (!authed || !sharedLoaded) return;
+
+    if (!locationHydratedRef.current) {
+      applyLocation(locationFromSearchParams(searchParams, sharedFolders));
+      locationHydratedRef.current = true;
+      return;
+    }
+
+    const fromUrl = locationFromSearchParams(searchParams, sharedFolders);
+    const now = currentLocation(nav, prefix, activeShare);
+    if (!locationsMatch(fromUrl, now)) {
+      applyLocation(fromUrl);
+    }
+  }, [
+    authed,
+    sharedLoaded,
+    searchParams,
+    sharedFolders,
+    applyLocation,
+    nav,
+    prefix,
+    activeShare,
+  ]);
+
+  // Keep URL in sync with navigation state
+  useEffect(() => {
+    if (!authed || !sharedLoaded || !locationHydratedRef.current) return;
+    const target = searchParamsFromLocation(currentLocation(nav, prefix, activeShare));
+    const current = searchParams.toString();
+    if (target !== current) {
+      router.replace(target ? `/?${target}` : "/", { scroll: false });
+    }
+  }, [authed, sharedLoaded, nav, prefix, activeShare, router, searchParams]);
 
   const loadShareMembers = useCallback(() => {
     if (!activeShare) {
@@ -134,7 +204,7 @@ export function CloudApp() {
 
   // ------------------------------- data loading ----------------------------- //
   const refresh = useCallback(async () => {
-    if (!authed) return;
+    if (!authed || !sharedLoaded) return;
     setLoading(true);
     try {
       if (activeShare) {
@@ -173,7 +243,7 @@ export function CloudApp() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed, nav, prefix, debouncedQuery, activeShare]);
+  }, [authed, sharedLoaded, nav, prefix, debouncedQuery, activeShare]);
 
   useEffect(() => {
     refresh();
