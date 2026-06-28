@@ -106,13 +106,15 @@ export function MediaViewer({
           <button onClick={download} className="rounded-lg p-2 hover:bg-white/10" title="Download">
             <Icon.Download size={20} />
           </button>
-          <button
-            onClick={() => onDelete(item)}
-            className="rounded-lg p-2 text-[var(--danger)] hover:bg-white/10"
-            title="Delete"
-          >
-            <Icon.Trash size={20} />
-          </button>
+          {(!shareId || item.can_delete !== false) && (
+            <button
+              onClick={() => onDelete(item)}
+              className="rounded-lg p-2 text-[var(--danger)] hover:bg-white/10"
+              title="Delete"
+            >
+              <Icon.Trash size={20} />
+            </button>
+          )}
           <button onClick={onClose} className="rounded-lg p-2 hover:bg-white/10" title="Close">
             <Icon.X size={22} />
           </button>

@@ -52,14 +52,20 @@ async function getPool(): Promise<Pool> {
   return pool;
 }
 
-export async function upsertUser(userId: string, email: string, name: string | null): Promise<void> {
+export async function upsertUser(
+  userId: string,
+  email: string,
+  name: string | null,
+  image: string | null = null,
+): Promise<void> {
   await (await getPool()).query(
-    `INSERT INTO users (id, email, name, created_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO users (id, email, name, image, created_at)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (id) DO UPDATE SET
        email = EXCLUDED.email,
-       name = COALESCE(EXCLUDED.name, users.name)`,
-    [userId, email, name, Math.floor(Date.now() / 1000)],
+       name = COALESCE(EXCLUDED.name, users.name),
+       image = COALESCE(EXCLUDED.image, users.image)`,
+    [userId, email, name, image, Math.floor(Date.now() / 1000)],
   );
 }
 
@@ -505,6 +511,7 @@ export type DbSharedMember = {
   joined_via: string | null;
   email?: string;
   name?: string;
+  image?: string;
 };
 
 export type DbSharedJoinCode = {
@@ -604,7 +611,7 @@ export async function removeSharedMember(shareId: string, userId: string): Promi
 
 export async function listSharedMembers(shareId: string): Promise<DbSharedMember[]> {
   const res = await (await getPool()).query(
-    `SELECT m.share_id, m.user_id, m.role, m.joined_at, m.joined_via, u.email, u.name
+    `SELECT m.share_id, m.user_id, m.role, m.joined_at, m.joined_via, u.email, u.name, u.image
      FROM shared_members m
      LEFT JOIN users u ON u.id = m.user_id
      WHERE m.share_id = $1
@@ -612,6 +619,22 @@ export async function listSharedMembers(shareId: string): Promise<DbSharedMember
     [shareId],
   );
   return res.rows as DbSharedMember[];
+}
+
+export async function sharedFolderHasOtherUploads(
+  shareId: string,
+  folderPrefix: string,
+  uploaderId: string,
+): Promise<boolean> {
+  const prefix = folderPrefix.endsWith("/") ? folderPrefix : `${folderPrefix}/`;
+  const res = await (await getPool()).query(
+    `SELECT EXISTS(
+       SELECT 1 FROM shared_items
+       WHERE share_id = $1 AND key LIKE $2 AND imported_by <> $3
+     ) AS has_other`,
+    [shareId, `${prefix}%`, uploaderId],
+  );
+  return Boolean(res.rows[0]?.has_other);
 }
 
 export async function createJoinCode(

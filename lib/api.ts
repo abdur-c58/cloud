@@ -427,6 +427,9 @@ export const api = {
   sharedMembers: (shareId: string) =>
     request<{ members: SharedMemberInfo[] }>(`/api/shared/${shareId}/members`),
 
+  sharedLeave: (shareId: string) =>
+    request<{ ok: boolean }>(`/api/shared/${shareId}/leave`, { method: "POST" }),
+
   sharedKick: (shareId: string, user_id: string) =>
     request<{ ok: boolean }>(`/api/shared/${shareId}/kick`, {
       method: "POST",

@@ -54,6 +54,8 @@ function buildMenu(
   isMedia: boolean,
   onAction: (action: CardAction, item: StorageItem) => void,
 ): MenuEntry[] {
+  const canDelete = !isShared || item.can_delete !== false;
+
   if (isShared) {
     return isFolder
       ? [
@@ -65,6 +67,7 @@ function buildMenu(
             icon: <Icon.Trash size={16} />,
             onClick: () => onAction("delete", item),
             danger: true,
+            hidden: !canDelete,
             separatorBefore: true,
           },
         ]
@@ -78,6 +81,7 @@ function buildMenu(
             icon: <Icon.Trash size={16} />,
             onClick: () => onAction("delete", item),
             danger: true,
+            hidden: !canDelete,
             separatorBefore: true,
           },
         ];

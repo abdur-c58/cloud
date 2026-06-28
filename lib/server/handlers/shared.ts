@@ -38,6 +38,28 @@ async function requireOwner(shareId: string, userId: string) {
   return member;
 }
 
+async function assertCanDeleteSharedItem(
+  shareId: string,
+  userId: string,
+  role: string,
+  storageKey: string,
+): Promise<void> {
+  if (role === "owner") return;
+
+  if (storageKey.endsWith("/")) {
+    const hasOther = await db.sharedFolderHasOtherUploads(shareId, storageKey, userId);
+    if (hasOther) {
+      throw new ApiError(403, "You can only delete folders that contain your uploads.");
+    }
+    return;
+  }
+
+  const row = await db.getSharedItem(shareId, storageKey);
+  if (!row || row.imported_by !== userId) {
+    throw new ApiError(403, "You can only delete files you uploaded.");
+  }
+}
+
 async function indexSharedFile(
   shareId: string,
   key: string,
@@ -110,12 +132,40 @@ export async function handleJoinShared(req: Request) {
 
 export async function handleSharedList(req: Request, shareId: string) {
   const user = await requireUser(req);
-  await requireMember(shareId, user.userId);
+  const member = await requireMember(shareId, user.userId);
   const { searchParams } = new URL(req.url);
   const prefix = searchParams.get("prefix") || "";
   const storagePrefix = toSharedPrefix(shareId, prefix);
   const result = await r2.listDir(storagePrefix);
-  return exposeSharedListing(result, shareId);
+  const exposed = exposeSharedListing(result, shareId);
+  const isOwner = member.role === "owner";
+
+  for (const file of exposed.files as Array<Record<string, unknown>>) {
+    const fullKey = assertSharedKey(shareId, String(file.key));
+    const row = await db.getSharedItem(shareId, fullKey);
+    if (row) {
+      file.imported_by = row.imported_by;
+      file.can_delete = isOwner || row.imported_by === user.userId;
+    } else {
+      file.can_delete = isOwner;
+    }
+  }
+
+  for (const folder of exposed.folders as Array<Record<string, unknown>>) {
+    const folderKey = String(folder.key);
+    const fullKey = assertSharedKey(
+      shareId,
+      folderKey.endsWith("/") ? folderKey : `${folderKey}/`,
+    );
+    if (isOwner) {
+      folder.can_delete = true;
+    } else {
+      const hasOther = await db.sharedFolderHasOtherUploads(shareId, fullKey, user.userId);
+      folder.can_delete = !hasOther;
+    }
+  }
+
+  return exposed;
 }
 
 export async function handleSharedCreateFolder(req: Request, shareId: string) {
@@ -190,9 +240,10 @@ export async function handleSharedMediaUrl(req: Request, shareId: string) {
 
 export async function handleSharedDelete(req: Request, shareId: string) {
   const user = await requireUser(req);
-  await requireMember(shareId, user.userId);
+  const member = await requireMember(shareId, user.userId);
   const body = await req.json();
   const storageKey = assertSharedKey(shareId, body.key);
+  await assertCanDeleteSharedItem(shareId, user.userId, member.role, storageKey);
   const deleted = await r2.deleteKey(storageKey);
   if (storageKey.endsWith("/")) {
     await db.deleteSharedItemsUnder(shareId, storageKey);
@@ -327,8 +378,20 @@ export async function handleSharedMembers(req: Request, shareId: string) {
       joined_at: m.joined_at,
       email: m.email,
       name: m.name,
+      image: m.image ?? undefined,
     })),
   };
+}
+
+export async function handleSharedLeave(req: Request, shareId: string) {
+  const user = await requireUser(req);
+  const member = await requireMember(shareId, user.userId);
+  if (member.role === "owner") {
+    throw new ApiError(400, "Host cannot leave. Delete the shared folder instead.");
+  }
+  const removed = await db.removeSharedMember(shareId, user.userId);
+  if (!removed) throw new ApiError(400, "Could not leave shared folder.");
+  return { ok: true };
 }
 
 export async function handleSharedKick(req: Request, shareId: string) {

@@ -6,6 +6,10 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS visual_indexed_at BIGINT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS visual_index_size BIGINT;
 `;
 
+const USER_MIGRATIONS = `
+ALTER TABLE users ADD COLUMN IF NOT EXISTS image TEXT;
+`;
+
 const CHAT_SCHEMA = `
 CREATE TABLE IF NOT EXISTS chat_conversations (
     id          TEXT PRIMARY KEY,
@@ -86,7 +90,9 @@ let schemaReady: Promise<void> | null = null;
 
 export function ensureDbSchema(pool: Pool): Promise<void> {
   if (!schemaReady) {
-    schemaReady = pool.query(ITEMS_MIGRATIONS + CHAT_SCHEMA + SHARED_SCHEMA).then(() => undefined);
+    schemaReady = pool
+      .query(ITEMS_MIGRATIONS + USER_MIGRATIONS + CHAT_SCHEMA + SHARED_SCHEMA)
+      .then(() => undefined);
   }
   return schemaReady;
 }

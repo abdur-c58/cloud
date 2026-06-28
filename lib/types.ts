@@ -13,6 +13,10 @@ export interface StorageItem {
   folder?: string;
   // present on folders
   locked?: boolean;
+  /** shared folder: uploader user id */
+  imported_by?: string;
+  /** shared folder: current user may delete */
+  can_delete?: boolean;
 }
 
 export interface Listing {
@@ -94,6 +98,7 @@ export interface SharedMemberInfo {
   joined_at: number;
   email?: string;
   name?: string;
+  image?: string;
 }
 
 export interface SharedJoinCodeInfo {

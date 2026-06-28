@@ -15,7 +15,7 @@ import {
 import { invalidateMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { breadcrumbs } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AuthError, HealthInfo, IndexSummary, LockedError, SharedFolderInfo, StorageItem } from "@/lib/types";
+import { AuthError, HealthInfo, IndexSummary, LockedError, SharedFolderInfo, SharedMemberInfo, StorageItem } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CardAction, FileCard } from "./FileCard";
@@ -30,6 +30,7 @@ import { MoveModal } from "./MoveModal";
 import { PromptModal } from "./PromptModal";
 import { SearchInput } from "./SearchInput";
 import { SharedManageModal } from "./SharedManageModal";
+import { SharedMemberBar } from "./SharedMemberBar";
 import { NavKey, Sidebar } from "./Sidebar";
 import { ViewTab } from "./NavTab";
 import { toast } from "@/lib/toast";
@@ -80,6 +81,8 @@ export function CloudApp() {
   const [importOpen, setImportOpen] = useState(false);
   const [createShareOpen, setCreateShareOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [leaveShareOpen, setLeaveShareOpen] = useState(false);
+  const [shareMembers, setShareMembers] = useState<SharedMemberInfo[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +116,21 @@ export function CloudApp() {
     if (authed) api.listShared().then((r) => setSharedFolders(r.folders)).catch(() => {});
   }, [authed]);
   useEffect(() => loadShared(), [loadShared]);
+
+  const loadShareMembers = useCallback(() => {
+    if (!activeShare) {
+      setShareMembers([]);
+      return;
+    }
+    api
+      .sharedMembers(activeShare.id)
+      .then((r) => setShareMembers(r.members))
+      .catch(() => setShareMembers([]));
+  }, [activeShare]);
+
+  useEffect(() => {
+    loadShareMembers();
+  }, [loadShareMembers]);
 
   // ------------------------------- data loading ----------------------------- //
   const refresh = useCallback(async () => {
@@ -179,6 +197,20 @@ export function CloudApp() {
     setNav("library");
     setPrefix("");
     setQuery("");
+  };
+
+  const leaveSharedFolder = async () => {
+    if (!activeShare) return;
+    setLeaveShareOpen(false);
+    try {
+      await api.sharedLeave(activeShare.id);
+      toast(`Left “${activeShare.name}”`, "success");
+      setActiveShare(null);
+      setPrefix("");
+      loadShared();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not leave folder", "error");
+    }
   };
 
   const openFolder = (folderKey: string) => {
@@ -796,7 +828,14 @@ export function CloudApp() {
               )}
             </div>
 
-            <div className="hidden items-center gap-2 sm:flex">
+            <div className="hidden items-center gap-3 sm:flex">
+              {activeShare && (
+                <SharedMemberBar
+                  members={shareMembers}
+                  isOwner={activeShare.is_owner}
+                  onLeave={() => setLeaveShareOpen(true)}
+                />
+              )}
               <ViewControls
                 view={view}
                 setView={setView}
@@ -827,6 +866,15 @@ export function CloudApp() {
 
           {/* Search + mobile actions */}
           <div className="flex items-center gap-2">
+            {activeShare && (
+              <div className="sm:hidden">
+                <SharedMemberBar
+                  members={shareMembers}
+                  isOwner={activeShare.is_owner}
+                  onLeave={() => setLeaveShareOpen(true)}
+                />
+              </div>
+            )}
             <SearchInput
               value={query}
               onChange={setQuery}
@@ -974,6 +1022,18 @@ export function CloudApp() {
         onConfirm={doTags}
       />
       <MoveModal open={Boolean(moveItem)} item={moveItem} onClose={() => setMoveItem(null)} onMove={doMove} />
+      <ConfirmDialog
+        open={leaveShareOpen}
+        title="Leave shared folder?"
+        message={
+          activeShare
+            ? `You will lose access to “${activeShare.name}”. Files you uploaded stay in the folder for other members.`
+            : ""
+        }
+        confirmLabel="Leave"
+        onCancel={() => setLeaveShareOpen(false)}
+        onConfirm={() => void leaveSharedFolder()}
+      />
       <ConfirmDialog
         open={logoutOpen}
         title="Sign out?"

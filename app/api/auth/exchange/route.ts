@@ -30,7 +30,7 @@ export const POST = withHandler(async (req) => {
   const email = session.user.email ?? "";
   if (!email) throw new ApiError(400, "Missing user email.");
 
-  await upsertUser(session.user.id, email, session.user.name ?? null);
+  await upsertUser(session.user.id, email, session.user.name ?? null, session.user.image ?? null);
   const { token, expiresAt } = await createSessionToken(session.user.id, email);
   return json({ token, expires_at: expiresAt });
 });
