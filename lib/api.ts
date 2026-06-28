@@ -156,6 +156,11 @@ export const api = {
     return data as TokenResponse;
   },
 
+  syncProfile: () =>
+    request<{ ok: boolean; image: string | null; name: string | null }>("/api/auth/sync-profile", {
+      method: "POST",
+    }),
+
   list: (prefix: string) => request<Listing>("/api/storage/list", { query: { prefix } }),
 
   createFolder: (prefix: string, name: string) =>

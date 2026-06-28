@@ -23,6 +23,16 @@ import {
   searchParamsFromLocation,
 } from "@/lib/navigation-url";
 import { cn } from "@/lib/utils";
+import {
+  applyTypeFilter,
+  parseStoredSort,
+  parseStoredTypeFilter,
+  SORT_OPTIONS,
+  sortStorageItems,
+  TYPE_FILTER_OPTIONS,
+  type SortKey,
+  type TypeFilter,
+} from "@/lib/library-controls";
 import { AuthError, HealthInfo, IndexSummary, LockedError, SharedFolderInfo, SharedMemberInfo, StorageItem } from "@/lib/types";
 import { ChatPanel } from "./ChatPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -51,7 +61,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type SortKey = "name" | "date" | "size";
+
 const MEDIA_TYPES = new Set(["image", "video", "audio"]);
 
 export function CloudApp() {
@@ -70,7 +80,8 @@ export function CloudApp() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [sort, setSort] = useState<SortKey>("name");
+  const [sort, setSort] = useState<SortKey>("name-asc");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [summary, setSummary] = useState<IndexSummary | null>(null);
 
   const [viewer, setViewer] = useState<{ items: StorageItem[]; index: number } | null>(null);
@@ -111,6 +122,11 @@ export function CloudApp() {
   }, []);
 
   useEffect(() => {
+    if (!authed) return;
+    api.syncProfile().catch(() => {});
+  }, [authed]);
+
+  useEffect(() => {
     if (!authed) locationHydratedRef.current = false;
   }, [authed]);
 
@@ -118,10 +134,20 @@ export function CloudApp() {
   useEffect(() => {
     const v = localStorage.getItem("gcc-view");
     if (v === "grid" || v === "list") setView(v);
+    const storedSort = parseStoredSort(localStorage.getItem("gcc-sort"));
+    if (storedSort) setSort(storedSort);
+    const storedFilter = parseStoredTypeFilter(localStorage.getItem("gcc-type-filter"));
+    if (storedFilter) setTypeFilter(storedFilter);
   }, []);
   useEffect(() => {
     localStorage.setItem("gcc-view", view);
   }, [view]);
+  useEffect(() => {
+    localStorage.setItem("gcc-sort", sort);
+  }, [sort]);
+  useEffect(() => {
+    localStorage.setItem("gcc-type-filter", typeFilter);
+  }, [typeFilter]);
 
   // debounce search
   useEffect(() => {
@@ -187,15 +213,18 @@ export function CloudApp() {
     }
   }, [authed, sharedLoaded, nav, prefix, activeShare, router, searchParams]);
 
-  const loadShareMembers = useCallback(() => {
+  const loadShareMembers = useCallback(async () => {
     if (!activeShare) {
       setShareMembers([]);
       return;
     }
-    api
-      .sharedMembers(activeShare.id)
-      .then((r) => setShareMembers(r.members))
-      .catch(() => setShareMembers([]));
+    try {
+      await api.syncProfile().catch(() => {});
+      const r = await api.sharedMembers(activeShare.id);
+      setShareMembers(r.members);
+    } catch {
+      setShareMembers([]);
+    }
   }, [activeShare]);
 
   useEffect(() => {
@@ -289,23 +318,18 @@ export function CloudApp() {
   };
 
   // -------------------------------- sorting --------------------------------- //
-  const sortItems = useCallback(
-    (list: StorageItem[]) => {
-      const sorted = [...list];
-      sorted.sort((a, b) => {
-        if (sort === "name") return a.name.localeCompare(b.name);
-        if (sort === "size") return (b.size ?? 0) - (a.size ?? 0);
-        const da = a.last_modified ? Date.parse(a.last_modified) : 0;
-        const db = b.last_modified ? Date.parse(b.last_modified) : 0;
-        return db - da;
-      });
-      return sorted;
-    },
-    [sort],
+  const filtered = useMemo(
+    () => applyTypeFilter(folders, files, typeFilter),
+    [folders, files, typeFilter],
   );
-
-  const sortedFolders = useMemo(() => sortItems(folders), [folders, sortItems]);
-  const sortedFiles = useMemo(() => sortItems(files), [files, sortItems]);
+  const sortedFolders = useMemo(
+    () => sortStorageItems(filtered.folders, sort),
+    [filtered.folders, sort],
+  );
+  const sortedFiles = useMemo(
+    () => sortStorageItems(filtered.files, sort),
+    [filtered.files, sort],
+  );
   const mediaFiles = useMemo(() => sortedFiles.filter((f) => MEDIA_TYPES.has(f.type)), [sortedFiles]);
   const isEmpty = !loading && sortedFolders.length === 0 && sortedFiles.length === 0;
 
@@ -911,6 +935,8 @@ export function CloudApp() {
                 setView={setView}
                 sort={sort}
                 setSort={setSort}
+                typeFilter={typeFilter}
+                setTypeFilter={setTypeFilter}
                 onReindex={reindex}
               />
               {canUpload && (
@@ -955,6 +981,14 @@ export function CloudApp() {
                     ? "Search your whole library…"
                     : `Search ${sectionTitle.toLowerCase()}…`
               }
+            />
+            <FilterSortSelects
+              sort={sort}
+              setSort={setSort}
+              typeFilter={typeFilter}
+              setTypeFilter={setTypeFilter}
+              compact
+              className="sm:hidden"
             />
             <div className="flex items-center gap-2 sm:hidden">
               {canUpload && (
@@ -1015,7 +1049,6 @@ export function CloudApp() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,video/*,audio/*"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) handleFiles(e.target.files);
@@ -1029,7 +1062,6 @@ export function CloudApp() {
         multiple
         // @ts-expect-error webkitdirectory is non-standard
         webkitdirectory=""
-        accept="image/*,video/*,audio/*"
         className="hidden"
         onChange={(e) => {
           if (e.target.files) handleFiles(e.target.files);
@@ -1171,17 +1203,68 @@ export function CloudApp() {
 }
 
 // ------------------------------ sub components ------------------------------ //
+function FilterSortSelects({
+  sort,
+  setSort,
+  typeFilter,
+  setTypeFilter,
+  compact,
+  className,
+}: {
+  sort: SortKey;
+  setSort: (s: SortKey) => void;
+  typeFilter: TypeFilter;
+  setTypeFilter: (f: TypeFilter) => void;
+  compact?: boolean;
+  className?: string;
+}) {
+  const triggerClass = compact ? "h-8 w-[108px] text-xs" : "h-8 w-[132px]";
+  const contentClass = compact ? "w-[108px]" : "w-[132px]";
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as TypeFilter)}>
+        <SelectTrigger className={triggerClass} aria-label="Filter by type">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end" sideOffset={6} className={contentClass}>
+          {TYPE_FILTER_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+        <SelectTrigger className={triggerClass} aria-label="Sort by">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end" sideOffset={6} className={contentClass}>
+          {SORT_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function ViewControls({
   view,
   setView,
   sort,
   setSort,
+  typeFilter,
+  setTypeFilter,
   onReindex,
 }: {
   view: "grid" | "list";
   setView: (v: "grid" | "list") => void;
   sort: SortKey;
   setSort: (s: SortKey) => void;
+  typeFilter: TypeFilter;
+  setTypeFilter: (f: TypeFilter) => void;
   onReindex: () => void;
 }) {
   return (
@@ -1194,16 +1277,12 @@ function ViewControls({
       >
         <RefreshCw className="size-[17px] shrink-0" strokeWidth={1.8} aria-hidden />
       </button>
-      <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-        <SelectTrigger className="h-8 w-[132px]" aria-label="Sort by">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end" sideOffset={6} className="w-[132px]">
-          <SelectItem value="name">Name</SelectItem>
-          <SelectItem value="date">Newest</SelectItem>
-          <SelectItem value="size">Largest</SelectItem>
-        </SelectContent>
-      </Select>
+      <FilterSortSelects
+        sort={sort}
+        setSort={setSort}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
+      />
       <div className="view-toggle">
         <ViewTab
           active={view === "grid"}

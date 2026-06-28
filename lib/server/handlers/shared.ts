@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import * as db from "../db";
 import { nextDuplicateName } from "../../duplicate-name";
-import { classify, contentTypeFor, extOf, isMedia } from "../media";
+import { classify, contentTypeFor, extOf } from "../media";
 import * as r2 from "../r2";
 import { ApiError, requireUser } from "../security";
 import {
@@ -186,9 +186,6 @@ export async function handleSharedUploadUrl(req: Request, shareId: string) {
     typeof body.relative_path === "string" && body.relative_path.trim()
       ? r2.sanitizeRelativePath(body.relative_path)
       : r2.sanitizeSegment(body.name);
-  if (!isMedia(finalName.split("/").pop() || finalName)) {
-    throw new r2.StorageError("Unsupported file type.");
-  }
   const key = `${prefix}${finalName}`;
   const content_type = body.content_type || contentTypeFor(finalName);
   const url = await r2.presignPut(key);
@@ -207,9 +204,6 @@ export async function handleSharedUpload(req: Request, shareId: string) {
   const fileName = relativePath
     ? r2.sanitizeRelativePath(relativePath)
     : r2.sanitizeSegment(file.name || "upload");
-  if (!isMedia(fileName.split("/").pop() || fileName)) {
-    throw new r2.StorageError("Unsupported file type.");
-  }
   const key = `${storagePrefix}${fileName}`;
   const content_type = file.type || contentTypeFor(fileName);
   const buf = Buffer.from(await file.arrayBuffer());

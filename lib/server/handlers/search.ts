@@ -1,6 +1,6 @@
 import * as db from "../db";
 import { lockingAncestor, folderTokenFromRequest } from "../locks";
-import { classify, contentTypeFor, extOf, isMedia } from "../media";
+import { classify, contentTypeFor, extOf } from "../media";
 import * as r2 from "../r2";
 import { requireUser, unlockedFolders } from "../security";
 import { assertOwned, stripUserRoot, userRoot } from "../user-scope";
@@ -13,7 +13,6 @@ export async function handleReindex(req: Request) {
   let count = 0;
   for (const obj of objects) {
     const name = obj.key.split("/").pop() || "";
-    if (!isMedia(name)) continue;
     await db.upsertItem(user.userId, {
       key: obj.key,
       name,

@@ -47,6 +47,18 @@ type MenuEntry = {
   separatorBefore?: boolean;
 };
 
+function openMenuEntry(
+  isMedia: boolean,
+  onAction: (action: CardAction, item: StorageItem) => void,
+  item: StorageItem,
+): MenuEntry {
+  return {
+    label: "Open",
+    icon: isMedia ? <Icon.Play size={14} /> : <Icon.Download size={16} />,
+    onClick: () => onAction("open", item),
+  };
+}
+
 function buildMenu(
   item: StorageItem,
   isShared: boolean,
@@ -72,7 +84,7 @@ function buildMenu(
           },
         ]
       : [
-          { label: "Open", icon: <Icon.Play size={14} />, onClick: () => onAction("open", item), hidden: !isMedia },
+          openMenuEntry(isMedia, onAction, item),
           { label: "Download", icon: <Icon.Download size={16} />, onClick: () => onAction("download", item) },
           { label: "Duplicate", icon: <Icon.Copy size={16} />, onClick: () => onAction("duplicate", item) },
           { label: "Copy", icon: <Icon.Copy size={16} />, onClick: () => onAction("copy", item) },
@@ -110,7 +122,7 @@ function buildMenu(
   }
 
   return [
-    { label: "Open", icon: <Icon.Play size={14} />, onClick: () => onAction("open", item), hidden: !isMedia },
+    openMenuEntry(isMedia, onAction, item),
     { label: "Download", icon: <Icon.Download size={16} />, onClick: () => onAction("download", item) },
     {
       label: item.favorite ? "Unfavorite" : "Favorite",

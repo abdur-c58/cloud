@@ -1,7 +1,7 @@
 import * as db from "../db";
 import { nextDuplicateName } from "../../duplicate-name";
 import { ensureUnlocked, folderTokenFromRequest } from "../locks";
-import { classify, contentTypeFor, extOf, isMedia } from "../media";
+import { classify, contentTypeFor, extOf } from "../media";
 import * as r2 from "../r2";
 import { requireUser } from "../security";
 import {
@@ -59,9 +59,6 @@ export async function handleUploadUrl(req: Request) {
     typeof body.relative_path === "string" && body.relative_path.trim()
       ? r2.sanitizeRelativePath(body.relative_path)
       : r2.sanitizeSegment(body.name);
-  if (!isMedia(finalName.split("/").pop() || finalName)) {
-    throw new r2.StorageError("Unsupported file type. Allowed: images, video and audio formats.");
-  }
   const key = `${prefix}${finalName}`;
   const content_type = body.content_type || contentTypeFor(finalName);
   const url = await r2.presignPut(key);
@@ -81,9 +78,6 @@ export async function handleUpload(req: Request) {
   const fileName = relativePath
     ? r2.sanitizeRelativePath(relativePath)
     : r2.sanitizeSegment(file.name || "upload");
-  if (!isMedia(fileName.split("/").pop() || fileName)) {
-    throw new r2.StorageError("Unsupported file type. Allowed: images, video and audio formats.");
-  }
   const key = `${storagePrefix}${fileName}`;
   const name = fileName.split("/").pop() || fileName;
   const content_type = file.type || contentTypeFor(name);

@@ -64,7 +64,10 @@ export async function upsertUser(
      ON CONFLICT (id) DO UPDATE SET
        email = EXCLUDED.email,
        name = COALESCE(EXCLUDED.name, users.name),
-       image = COALESCE(EXCLUDED.image, users.image)`,
+       image = CASE
+         WHEN EXCLUDED.image IS NOT NULL AND EXCLUDED.image <> '' THEN EXCLUDED.image
+         ELSE users.image
+       END`,
     [userId, email, name, image, Math.floor(Date.now() / 1000)],
   );
 }
