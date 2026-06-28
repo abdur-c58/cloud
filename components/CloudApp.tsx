@@ -17,8 +17,8 @@ import { invalidateMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { breadcrumbs } from "@/lib/format";
 import {
   currentLocation,
+  decodePath,
   locationFromSearchParams,
-  locationsMatch,
   resolveShare,
   searchParamsFromLocation,
 } from "@/lib/navigation-url";
@@ -114,6 +114,8 @@ export function CloudApp() {
   const [draggingItem, setDraggingItem] = useState<DragItemPayload | null>(null);
   const [clipboard, setClipboard] = useState<ClipboardItem | null>(null);
   const locationHydratedRef = useRef(false);
+  const sharedFoldersRef = useRef(sharedFolders);
+  sharedFoldersRef.current = sharedFolders;
 
   // ----------------------------- auth bootstrap ----------------------------- //
   useEffect(() => {
@@ -168,40 +170,31 @@ export function CloudApp() {
   }, [authed]);
   useEffect(() => loadShared(), [loadShared]);
 
-  const applyLocation = useCallback(
-    (loc: ReturnType<typeof locationFromSearchParams>) => {
-      setNav(loc.nav);
-      setPrefix(loc.prefix);
-      setActiveShare(resolveShare(loc.shareId, sharedFolders));
-    },
-    [sharedFolders],
-  );
+  const applyLocation = useCallback((loc: ReturnType<typeof locationFromSearchParams>) => {
+    setNav(loc.nav);
+    setPrefix(loc.prefix);
+    setActiveShare(resolveShare(loc.shareId, sharedFoldersRef.current));
+  }, []);
 
   // Restore navigation from URL (initial load, refresh, back/forward)
   useEffect(() => {
     if (!authed || !sharedLoaded) return;
+    applyLocation(locationFromSearchParams(searchParams, sharedFoldersRef.current));
+    locationHydratedRef.current = true;
+  }, [authed, sharedLoaded, searchParams, applyLocation]);
 
-    if (!locationHydratedRef.current) {
-      applyLocation(locationFromSearchParams(searchParams, sharedFolders));
-      locationHydratedRef.current = true;
-      return;
-    }
-
-    const fromUrl = locationFromSearchParams(searchParams, sharedFolders);
-    const now = currentLocation(nav, prefix, activeShare);
-    if (!locationsMatch(fromUrl, now)) {
-      applyLocation(fromUrl);
-    }
-  }, [
-    authed,
-    sharedLoaded,
-    searchParams,
-    sharedFolders,
-    applyLocation,
-    nav,
-    prefix,
-    activeShare,
-  ]);
+  // Resolve shared folder from URL once the folder list has loaded
+  useEffect(() => {
+    if (!authed || !sharedLoaded || !locationHydratedRef.current) return;
+    const shareId = searchParams.get("share")?.trim();
+    if (!shareId) return;
+    const share = sharedFolders.find((s) => s.id === shareId);
+    if (!share) return;
+    const path = decodePath(searchParams.get("path"));
+    setActiveShare((prev) => (prev?.id === shareId ? prev : share));
+    setNav("library");
+    setPrefix((prev) => (prev === path ? prev : path));
+  }, [authed, sharedLoaded, sharedFolders, searchParams]);
 
   // Keep URL in sync with navigation state
   useEffect(() => {
@@ -211,7 +204,7 @@ export function CloudApp() {
     if (target !== current) {
       router.replace(target ? `/?${target}` : "/", { scroll: false });
     }
-  }, [authed, sharedLoaded, nav, prefix, activeShare, router, searchParams]);
+  }, [authed, sharedLoaded, nav, prefix, activeShare, router]);
 
   const loadShareMembers = useCallback(async () => {
     if (!activeShare) {
