@@ -1,7 +1,6 @@
-# GigaChad Cloud
+`personal cloud use`
 
-Your private cloud for **photos, videos and audio** — backed by Cloudflare R2,
-with a secure Next.js API and a fast, modern UI. **Deploys entirely on Vercel.**
+ private cloud for **photos, videos and audio** — backed by Cloudflare R2,
 
 ![stack](https://img.shields.io/badge/app-Next.js%2016-black) ![stack](https://img.shields.io/badge/storage-Cloudflare%20R2-f38020) ![stack](https://img.shields.io/badge/db-Supabase%20Postgres-3ECF8E)
 
